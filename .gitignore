@@ -1,0 +1,16 @@
+# dependencies
+/node_modules
+
+# environment secrets - never commit these
+.env
+.env.*
+!.env.example
+.env.keys
+
+# logs
+npm-debug.log*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
