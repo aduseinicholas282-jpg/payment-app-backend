@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const Payment = require('../models/Payment');
+const User = require('../models/User');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -72,6 +73,42 @@ router.post('/refund/:reference', async (req, res) => {
   } catch (err) {
     console.error('Refund error:', err.response?.data || err.message);
     res.status(502).json({ error: 'Unable to process refund' });
+  }
+});
+
+// GET /api/admin/stats
+// Aggregate summary across ALL users' payments.
+router.get('/stats', async (req, res) => {
+  try {
+    const results = await Payment.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    const byStatus = { pending: 0, success: 0, failed: 0, refunded: 0 };
+    let totalPaid = 0;
+    let totalTransactions = 0;
+    for (const r of results) {
+      byStatus[r._id] = r.count;
+      totalTransactions += r.count;
+      if (r._id === 'success') totalPaid = r.totalAmount;
+    }
+    const successRate =
+      totalTransactions > 0
+        ? Math.round((byStatus.success / totalTransactions) * 100)
+        : 0;
+
+    const totalUsers = await User.countDocuments();
+
+    res.json({ totalPaid, totalTransactions, byStatus, successRate, totalUsers });
+  } catch (err) {
+    console.error('Admin stats error:', err.message);
+    res.status(500).json({ error: 'Unable to fetch stats' });
   }
 });
 

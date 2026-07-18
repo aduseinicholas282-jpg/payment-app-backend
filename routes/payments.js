@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const Payment = require('../models/Payment');
 const { requireAuth } = require('../middleware/auth');
@@ -80,6 +81,42 @@ router.get('/my-transactions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('My-transactions error:', err.message);
     res.status(500).json({ error: 'Unable to fetch transactions' });
+  }
+});
+
+// GET /api/payments/stats (requires login)
+// Aggregate summary of the logged-in user's own payments.
+router.get('/stats', requireAuth, async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    const results = await Payment.aggregate([
+      { $match: { user: userId } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    const byStatus = { pending: 0, success: 0, failed: 0, refunded: 0 };
+    let totalPaid = 0;
+    let totalTransactions = 0;
+    for (const r of results) {
+      byStatus[r._id] = r.count;
+      totalTransactions += r.count;
+      if (r._id === 'success') totalPaid = r.totalAmount;
+    }
+    const successRate =
+      totalTransactions > 0
+        ? Math.round((byStatus.success / totalTransactions) * 100)
+        : 0;
+
+    res.json({ totalPaid, totalTransactions, byStatus, successRate });
+  } catch (err) {
+    console.error('Stats error:', err.message);
+    res.status(500).json({ error: 'Unable to fetch stats' });
   }
 });
 
