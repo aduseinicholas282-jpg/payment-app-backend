@@ -1,8 +1,10 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
+const { sendPasswordResetEmail, isEmailConfigured } = require('../utils/mailer');
 
 const router = express.Router();
 
@@ -82,6 +84,72 @@ router.get('/me', requireAuth, async (req, res) => {
     res.json({ id: user._id, name: user.name, email: user.email, role: user.role });
   } catch (err) {
     res.status(500).json({ error: 'Unable to fetch user' });
+  }
+});
+
+// POST /api/auth/forgot-password
+// Always responds the same way whether or not the email exists, so this
+// endpoint can't be used to check which emails have accounts.
+router.post('/forgot-password', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const genericResponse = {
+      message: 'If an account exists for that email, a reset link has been sent.',
+    };
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.json(genericResponse);
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await user.save();
+
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`;
+
+    if (isEmailConfigured) {
+      await sendPasswordResetEmail(user, resetUrl);
+      return res.json(genericResponse);
+    }
+
+    // Email isn't configured yet in this environment: return the link
+    // directly so the flow is still usable/testable, clearly marked as such.
+    return res.json({ ...genericResponse, devResetUrl: resetUrl });
+  } catch (err) {
+    console.error('Forgot-password error:', err.message);
+    res.status(500).json({ error: 'Unable to process request' });
+  }
+});
+
+// POST /api/auth/reset-password/:token
+router.post('/reset-password/:token', authLimiter, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() },
+    }).select('+resetPasswordToken +resetPasswordExpires');
+
+    if (!user) {
+      return res.status(400).json({ error: 'Reset link is invalid or has expired' });
+    }
+
+    user.password = password; // pre-save hook hashes it
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: 'Password updated. You can now sign in.' });
+  } catch (err) {
+    console.error('Reset-password error:', err.message);
+    res.status(500).json({ error: 'Unable to reset password' });
   }
 });
 

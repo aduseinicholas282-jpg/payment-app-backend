@@ -18,13 +18,13 @@ const initializeLimiter = rateLimit({
 // POST /api/payments/initialize (requires login)
 router.post('/initialize', requireAuth, initializeLimiter, async (req, res) => {
   try {
-    if (!PAYSTACK_SECRET_KEY) {
-      return res.status(503).json({ error: 'Payment provider not configured yet' });
-    }
-
     const { email, amount, metadata } = req.body;
     if (!email || !amount || Number(amount) <= 0) {
       return res.status(400).json({ error: 'Valid email and amount are required' });
+    }
+
+    if (!PAYSTACK_SECRET_KEY) {
+      return res.status(503).json({ error: 'Payment provider not configured yet' });
     }
 
     const response = await axios.post(

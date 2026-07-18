@@ -35,4 +35,23 @@ async function sendReceiptEmail(payment) {
   }
 }
 
-module.exports = { sendReceiptEmail };
+module.exports = { sendReceiptEmail, sendPasswordResetEmail, isEmailConfigured: !!transporter };
+
+async function sendPasswordResetEmail(user, resetUrl) {
+  if (!transporter) return;
+  try {
+    await transporter.sendMail({
+      from: `"Payment App" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Reset your password',
+      text:
+        `Hi ${user.name},\n\n` +
+        `We received a request to reset your password. This link expires in 1 hour:\n\n` +
+        `${resetUrl}\n\n` +
+        `If you didn't request this, you can safely ignore this email.\n`,
+    });
+    console.log(`Password reset email sent to ${user.email}`);
+  } catch (err) {
+    console.error('Failed to send password reset email:', err.message);
+  }
+}
