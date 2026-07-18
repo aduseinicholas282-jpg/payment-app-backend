@@ -48,6 +48,12 @@ app.use(sanitizeRequest);
 // --- Payment routes (initialize + verify) ---
 app.use('/api/payments', require('./routes/payments'));
 
+// --- Auth routes (register/login/me) ---
+app.use('/api/auth', require('./routes/auth'));
+
+// --- Admin routes (transaction list + refunds) ---
+app.use('/api/admin', require('./routes/admin'));
+
 // Test Route
 app.get('/', (req, res) => {
     res.send('Payment App Backend is running!');
@@ -55,7 +61,11 @@ app.get('/', (req, res) => {
 
 // Database Connection
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/payment_db')
-    .then(() => console.log('MongoDB connected successfully'))
+    .then(() => {
+        console.log('MongoDB connected successfully');
+        // Only start the cleanup cron once we have a working DB connection
+        require('./jobs/expirePending').startExpirePendingJob();
+    })
     .catch(err => console.error('MongoDB connection error:', err.message));
 
 // --- 404 handler ---

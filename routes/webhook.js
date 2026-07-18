@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const Payment = require('../models/Payment');
+const { sendReceiptEmail } = require('../utils/mailer');
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
 
     if (event.event === 'charge.success') {
       const { reference, status, paid_at, channel, currency, gateway_response } = event.data;
-      await Payment.findOneAndUpdate(
+      const updated = await Payment.findOneAndUpdate(
         { reference },
         {
           status: status === 'success' ? 'success' : 'failed',
@@ -37,9 +38,15 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
           channel,
           currency,
           gatewayResponse: gateway_response,
-        }
+        },
+        { new: true }
       );
       console.log(`Webhook: payment ${reference} marked ${status}`);
+
+      if (updated && updated.status === 'success') {
+        // Fire-and-forget: never let a slow/failed email delay the webhook response
+        sendReceiptEmail(updated);
+      }
     }
 
     // Always acknowledge quickly so Paystack doesn't retry unnecessarily
