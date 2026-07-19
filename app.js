@@ -6,6 +6,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const Sentry = require('@sentry/node');
 const sanitizeRequest = require('./middleware/sanitize');
 
 function createApp() {
@@ -62,6 +63,9 @@ function createApp() {
   app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
   });
+
+  // --- Report unhandled errors to Sentry (no-ops if SENTRY_DSN isn't set) ---
+  Sentry.setupExpressErrorHandler(app);
 
   // --- Centralized error handler: never leak stack traces or internal
   // details to the client, only log them server-side for debugging. ---

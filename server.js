@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./instrument'); // Sentry must be initialized before other modules load
 const mongoose = require('mongoose');
 const createApp = require('./app');
 
