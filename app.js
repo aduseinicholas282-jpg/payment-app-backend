@@ -59,6 +59,11 @@ function createApp() {
     res.send('Payment App Backend is running!');
   });
 
+  // TEMPORARY: verifying Sentry on the live Render deployment. Will remove right after.
+  app.get('/debug-sentry', () => {
+    throw new Error('Live Render deployment Sentry verification');
+  });
+
   // --- 404 handler ---
   app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
