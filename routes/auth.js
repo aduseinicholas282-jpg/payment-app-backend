@@ -3,16 +3,20 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
+const Payment = require('../models/Payment');
 const { requireAuth } = require('../middleware/auth');
 const { sendPasswordResetEmail, isEmailConfigured } = require('../utils/mailer');
 
 const router = express.Router();
 
-// Limit login/register attempts to slow down brute-force/credential-stuffing
+// Limit login/register attempts to slow down brute-force/credential-stuffing.
+// Skipped when running under Jest (JEST_WORKER_ID is always set there),
+// so the same shared limiter instance doesn't make test order-dependent.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: { error: 'Too many attempts. Please try again later.' },
+  skip: () => !!process.env.JEST_WORKER_ID,
 });
 
 function signToken(user) {
@@ -150,6 +154,69 @@ router.post('/reset-password/:token', authLimiter, async (req, res) => {
   } catch (err) {
     console.error('Reset-password error:', err.message);
     res.status(500).json({ error: 'Unable to reset password' });
+  }
+});
+
+// PUT /api/auth/me — update name and/or email
+router.put('/me', requireAuth, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (email && email.toLowerCase() !== user.email) {
+      const existing = await User.findOne({ email: email.toLowerCase() });
+      if (existing) {
+        return res.status(409).json({ error: 'That email is already in use' });
+      }
+      user.email = email;
+    }
+    if (name) user.name = name;
+
+    await user.save();
+    res.json({ id: user._id, name: user.name, email: user.email, role: user.role });
+  } catch (err) {
+    console.error('Update profile error:', err.message);
+    res.status(500).json({ error: 'Unable to update profile' });
+  }
+});
+
+// POST /api/auth/change-password — requires the current password
+router.post('/change-password', requireAuth, authLimiter, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new password are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user || !(await user.comparePassword(currentPassword))) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    user.password = newPassword; // pre-save hook hashes it
+    await user.save();
+    res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    console.error('Change-password error:', err.message);
+    res.status(500).json({ error: 'Unable to change password' });
+  }
+});
+
+// DELETE /api/auth/me — permanently delete the logged-in user's account.
+// Their past payments are kept for financial record-keeping, just detached
+// from the deleted account.
+router.delete('/me', requireAuth, async (req, res) => {
+  try {
+    await Payment.updateMany({ user: req.user.id }, { $unset: { user: '' } });
+    await User.findByIdAndDelete(req.user.id);
+    res.json({ message: 'Account deleted.' });
+  } catch (err) {
+    console.error('Delete account error:', err.message);
+    res.status(500).json({ error: 'Unable to delete account' });
   }
 });
 

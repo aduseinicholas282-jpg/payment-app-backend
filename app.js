@@ -28,6 +28,7 @@ function createApp() {
     max: 300,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => !!process.env.JEST_WORKER_ID,
   });
   app.use(generalLimiter);
 

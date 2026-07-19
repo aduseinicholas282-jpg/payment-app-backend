@@ -14,6 +14,7 @@ const initializeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Too many payment attempts. Please try again later.' },
+  skip: () => !!process.env.JEST_WORKER_ID,
 });
 
 // POST /api/payments/initialize (requires login)

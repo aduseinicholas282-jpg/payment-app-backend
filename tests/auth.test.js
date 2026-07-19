@@ -149,3 +149,90 @@ describe('Password reset flow', () => {
     expect(res.body.devResetUrl).toBeUndefined();
   });
 });
+
+describe('PUT /api/auth/me', () => {
+  it('updates name and email', async () => {
+    const register = await request(app).post('/api/auth/register').send({
+      name: 'Old Name',
+      email: 'update1@example.com',
+      password: 'password123',
+    });
+    const res = await request(app)
+      .put('/api/auth/me')
+      .set('Authorization', `Bearer ${register.body.token}`)
+      .send({ name: 'New Name', email: 'update1new@example.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('New Name');
+    expect(res.body.email).toBe('update1new@example.com');
+  });
+
+  it('rejects changing to an email already in use', async () => {
+    await request(app).post('/api/auth/register').send({
+      name: 'Taken',
+      email: 'taken@example.com',
+      password: 'password123',
+    });
+    const register2 = await request(app).post('/api/auth/register').send({
+      name: 'Wants Taken',
+      email: 'wantstaken@example.com',
+      password: 'password123',
+    });
+    const res = await request(app)
+      .put('/api/auth/me')
+      .set('Authorization', `Bearer ${register2.body.token}`)
+      .send({ email: 'taken@example.com' });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /api/auth/change-password', () => {
+  it('changes the password when current password is correct', async () => {
+    const register = await request(app).post('/api/auth/register').send({
+      name: 'Change Pw',
+      email: 'changepw@example.com',
+      password: 'oldpassword1',
+    });
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${register.body.token}`)
+      .send({ currentPassword: 'oldpassword1', newPassword: 'newpassword1' });
+    expect(res.status).toBe(200);
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'changepw@example.com', password: 'newpassword1' });
+    expect(login.status).toBe(200);
+  });
+
+  it('rejects an incorrect current password', async () => {
+    const register = await request(app).post('/api/auth/register').send({
+      name: 'Change Pw2',
+      email: 'changepw2@example.com',
+      password: 'oldpassword1',
+    });
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${register.body.token}`)
+      .send({ currentPassword: 'wrongpassword', newPassword: 'newpassword1' });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('DELETE /api/auth/me', () => {
+  it('deletes the account and prevents further login', async () => {
+    const register = await request(app).post('/api/auth/register').send({
+      name: 'Delete Me',
+      email: 'deleteme@example.com',
+      password: 'password123',
+    });
+    const del = await request(app)
+      .delete('/api/auth/me')
+      .set('Authorization', `Bearer ${register.body.token}`);
+    expect(del.status).toBe(200);
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'deleteme@example.com', password: 'password123' });
+    expect(login.status).toBe(401);
+  });
+});
