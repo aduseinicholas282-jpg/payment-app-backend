@@ -51,6 +51,9 @@ function createApp() {
   // --- Auth routes (register/login/me/forgot-password/reset-password) ---
   app.use('/api/auth', require('./routes/auth'));
 
+  // --- Subscription routes (plans/initialize/my/cancel) ---
+  app.use('/api/subscriptions', require('./routes/subscriptions'));
+
   // --- Admin routes (transaction list + refunds) ---
   app.use('/api/admin', require('./routes/admin'));
 

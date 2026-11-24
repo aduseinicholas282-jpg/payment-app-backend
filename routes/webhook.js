@@ -1,7 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
 const Payment = require('../models/Payment');
-const { sendReceiptEmail } = require('../utils/mailer');
+const Subscription = require('../models/Subscription');
+const { sendReceiptEmail, sendSubscriptionReceiptEmail } = require('../utils/mailer');
+const { getDurationDays } = require('../config/plans');
 
 const router = express.Router();
 
@@ -44,8 +46,26 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
       console.log(`Webhook: payment ${reference} marked ${status}`);
 
       if (updated && updated.status === 'success') {
-        // Fire-and-forget: never let a slow/failed email delay the webhook response
-        sendReceiptEmail(updated);
+        const isSubscription = updated.metadata?.type === 'subscription';
+
+        if (isSubscription) {
+          const subscription = await Subscription.findOne({ reference });
+          if (subscription && subscription.status !== 'active') {
+            const now = new Date();
+            const days = getDurationDays(subscription.duration);
+            subscription.status = 'active';
+            subscription.startDate = now;
+            subscription.expiryDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+            subscription.expiryNotifiedAt = undefined;
+            await subscription.save();
+            console.log(`Webhook: subscription ${reference} (${subscription.plan}/${subscription.duration}) activated, expires ${subscription.expiryDate.toISOString()}`);
+            // Fire-and-forget, same pattern as the one-off receipt email
+            sendSubscriptionReceiptEmail(subscription);
+          }
+        } else {
+          // Fire-and-forget: never let a slow/failed email delay the webhook response
+          sendReceiptEmail(updated);
+        }
       }
     }
 

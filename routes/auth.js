@@ -111,11 +111,19 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
     user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await user.save();
 
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`;
+    if (!process.env.FRONTEND_URL) {
+      console.error('Forgot-password: FRONTEND_URL is not set — reset link would be broken');
+    }
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${rawToken}`;
 
     if (isEmailConfigured) {
-      await sendPasswordResetEmail(user, resetUrl);
-      return res.json(genericResponse);
+      const sent = await sendPasswordResetEmail(user, resetUrl);
+      if (sent) return res.json(genericResponse);
+      // Email is configured but the send itself failed (bad credentials,
+      // provider blocked it, etc.) — don't leave the user stuck with no
+      // way to reset. Fall back to the same dev-link response used when
+      // email isn't configured at all.
+      return res.json({ ...genericResponse, devResetUrl: resetUrl });
     }
 
     // Email isn't configured yet in this environment: return the link

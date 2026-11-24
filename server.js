@@ -10,8 +10,9 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/payment_db')
   .then(() => {
     console.log('MongoDB connected successfully');
-    // Only start the cleanup cron once we have a working DB connection
+    // Only start the cleanup crons once we have a working DB connection
     require('./jobs/expirePending').startExpirePendingJob();
+    require('./jobs/subscriptionExpiry').startSubscriptionExpiryJob();
   })
   .catch(err => console.error('MongoDB connection error:', err.message));
 

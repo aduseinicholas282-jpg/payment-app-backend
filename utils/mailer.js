@@ -35,10 +35,74 @@ async function sendReceiptEmail(payment) {
   }
 }
 
-module.exports = { sendReceiptEmail, sendPasswordResetEmail, isEmailConfigured: !!transporter };
+const PLAN_LABELS = { promotion: 'Promotion', gold: 'Gold', diamond: 'Diamond' };
+const DURATION_LABELS = { monthly: 'Monthly', sixMonth: '6 Months', yearly: 'Yearly' };
+
+function formatDate(date) {
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+async function sendSubscriptionReceiptEmail(subscription) {
+  if (!transporter) return;
+
+  try {
+    await transporter.sendMail({
+      from: `"Payment App" <${process.env.EMAIL_USER}>`,
+      to: subscription.email,
+      subject: `Your ${PLAN_LABELS[subscription.plan]} subscription is active`,
+      text:
+        `Your subscription payment was successful.\n\n` +
+        `Plan: ${PLAN_LABELS[subscription.plan]}\n` +
+        `Duration: ${DURATION_LABELS[subscription.duration]}\n` +
+        `Amount: ${subscription.currency || 'GHS'} ${subscription.amount}\n` +
+        `Reference: ${subscription.reference}\n` +
+        `Active from: ${formatDate(subscription.startDate)}\n` +
+        `Expires on: ${formatDate(subscription.expiryDate)}\n`,
+    });
+    console.log(`Subscription receipt email sent to ${subscription.email}`);
+  } catch (err) {
+    console.error('Failed to send subscription receipt email:', err.message);
+  }
+}
+
+async function sendExpiryReminderEmail(subscription) {
+  if (!transporter) return;
+
+  try {
+    const daysLeft = Math.max(
+      0,
+      Math.ceil((new Date(subscription.expiryDate) - Date.now()) / (24 * 60 * 60 * 1000))
+    );
+    await transporter.sendMail({
+      from: `"Payment App" <${process.env.EMAIL_USER}>`,
+      to: subscription.email,
+      subject: `Your ${PLAN_LABELS[subscription.plan]} subscription expires soon`,
+      text:
+        `Your ${PLAN_LABELS[subscription.plan]} subscription is expiring in ${daysLeft} day${daysLeft === 1 ? '' : 's'}, on ${formatDate(subscription.expiryDate)}.\n\n` +
+        `Renew before then to keep uninterrupted access.\n\n` +
+        `Plan: ${PLAN_LABELS[subscription.plan]}\n` +
+        `Duration: ${DURATION_LABELS[subscription.duration]}\n`,
+    });
+    console.log(`Expiry reminder email sent to ${subscription.email}`);
+  } catch (err) {
+    console.error('Failed to send expiry reminder email:', err.message);
+  }
+}
+
+module.exports = {
+  sendReceiptEmail,
+  sendPasswordResetEmail,
+  sendSubscriptionReceiptEmail,
+  sendExpiryReminderEmail,
+  isEmailConfigured: !!transporter,
+};
 
 async function sendPasswordResetEmail(user, resetUrl) {
-  if (!transporter) return;
+  if (!transporter) return false;
   try {
     await transporter.sendMail({
       from: `"Payment App" <${process.env.EMAIL_USER}>`,
@@ -51,7 +115,9 @@ async function sendPasswordResetEmail(user, resetUrl) {
         `If you didn't request this, you can safely ignore this email.\n`,
     });
     console.log(`Password reset email sent to ${user.email}`);
+    return true;
   } catch (err) {
     console.error('Failed to send password reset email:', err.message);
+    return false;
   }
 }
