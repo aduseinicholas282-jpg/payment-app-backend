@@ -15,6 +15,7 @@ const paymentSchema = new mongoose.Schema(
     currency: String,
     gatewayResponse: String,
     paidAt: Date,
+    receiptEmailSentAt: Date,
     refundedAt: Date,
     refundReference: String,
     metadata: { type: mongoose.Schema.Types.Mixed },
