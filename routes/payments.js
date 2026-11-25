@@ -69,13 +69,40 @@ router.get('/my-transactions', requireAuth, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const search = typeof req.query.search === 'string'
+      ? req.query.search.trim().slice(0, 100)
+      : '';
+    const requestedStatus = typeof req.query.status === 'string' ? req.query.status : '';
+    const filter = { user: req.user.id };
+
+    if (['pending', 'success', 'failed', 'refunded'].includes(requestedStatus)) {
+      filter.status = requestedStatus;
+    }
+
+    if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(safeSearch, 'i');
+      const searchFields = [
+        { reference: searchRegex },
+        { email: searchRegex },
+        { status: searchRegex },
+        { channel: searchRegex },
+        { currency: searchRegex },
+        { gatewayResponse: searchRegex },
+      ];
+      const amountSearch = Number(search.replace(/(?:GHS|₵|,|\s)/gi, ''));
+      if (/\d/.test(search) && Number.isFinite(amountSearch)) {
+        searchFields.push({ amount: amountSearch });
+      }
+      filter.$or = searchFields;
+    }
 
     const [payments, total] = await Promise.all([
-      Payment.find({ user: req.user.id })
+      Payment.find(filter)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
-      Payment.countDocuments({ user: req.user.id }),
+      Payment.countDocuments(filter),
     ]);
 
     res.json({ payments, total, page, pages: Math.ceil(total / limit) });
