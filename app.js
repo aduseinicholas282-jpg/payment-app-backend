@@ -19,9 +19,16 @@ function createApp() {
   // --- Security headers ---
   app.use(helmet());
 
-  // --- CORS: only allow the configured frontend origin, not "*" ---
-  const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
-  app.use(cors({ origin: allowedOrigin, credentials: true }));
+  // --- CORS: allow configured frontend origins and Ledger's current production domain ---
+  const configuredOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const allowedOrigins = [...new Set([
+    ...configuredOrigins,
+    'https://ledger-payments.vercel.app',
+  ])];
+  app.use(cors({ origin: allowedOrigins, credentials: true }));
 
   // --- General rate limiting across the whole API ---
   const generalLimiter = rateLimit({
